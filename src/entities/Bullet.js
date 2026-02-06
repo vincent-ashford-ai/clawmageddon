@@ -72,6 +72,7 @@ export class BulletPool {
       classType: Bullet,
       maxSize: maxSize,
       runChildUpdate: true,
+      allowGravity: false,
     });
     
     // Pre-create bullets

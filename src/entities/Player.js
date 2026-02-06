@@ -163,10 +163,12 @@ export class Player {
       }
     }
     
-    // Running bob animation
+    // Running bob animation - only scale, don't touch position (physics controls it)
     if (this.isOnGround) {
-      this.bobOffset = Math.sin(time * 0.015) * 2;
-      this.sprite.y = PLAYER.GROUND_Y + this.bobOffset;
+      this.bobOffset = Math.sin(time * 0.015) * 0.03;
+      this.sprite.setScale(1, 1 + this.bobOffset);
+    } else {
+      this.sprite.setScale(1, 1);
     }
     
     // Update muzzle flash position
