@@ -57,11 +57,19 @@ export class UIScene extends Phaser.Scene {
     // Kill notification (floating text)
     this.killTexts = [];
 
+    // Bind callbacks (EventBus doesn't support context arg)
+    this._onScoreChanged = this.onScoreChanged.bind(this);
+    this._onDistanceChanged = this.onDistanceChanged.bind(this);
+    this._onComboChanged = this.onComboChanged.bind(this);
+    this._onEnemyKilled = this.onEnemyKilled.bind(this);
+    this._onPowerUp = this.onPowerUp.bind(this);
+    this._onPowerUpExpired = this.onPowerUpExpired.bind(this);
+    
     // Event listeners
-    eventBus.on(Events.SCORE_CHANGED, this.onScoreChanged, this);
-    eventBus.on(Events.DISTANCE_CHANGED, this.onDistanceChanged, this);
-    eventBus.on(Events.COMBO_CHANGED, this.onComboChanged, this);
-    eventBus.on(Events.ENEMY_KILLED, this.onEnemyKilled, this);
+    eventBus.on(Events.SCORE_CHANGED, this._onScoreChanged);
+    eventBus.on(Events.DISTANCE_CHANGED, this._onDistanceChanged);
+    eventBus.on(Events.COMBO_CHANGED, this._onComboChanged);
+    eventBus.on(Events.ENEMY_KILLED, this._onEnemyKilled);
     
     // Power-up indicator
     this.powerUpText = this.add.text(GAME.WIDTH / 2, 60, '', {
@@ -72,8 +80,8 @@ export class UIScene extends Phaser.Scene {
       strokeThickness: 2,
     }).setOrigin(0.5).setDepth(1000).setAlpha(0);
     
-    eventBus.on(Events.POWERUP_COLLECTED, this.onPowerUp, this);
-    eventBus.on(Events.POWERUP_EXPIRED, this.onPowerUpExpired, this);
+    eventBus.on(Events.POWERUP_COLLECTED, this._onPowerUp);
+    eventBus.on(Events.POWERUP_EXPIRED, this._onPowerUpExpired);
     
     // Mute button (top center-right, avoiding score)
     this.createMuteButton();
@@ -126,6 +134,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   onScoreChanged(data) {
+    if (!this.scoreText) return;
     this.scoreText.setText(data.score.toString());
     
     // Pop animation
@@ -139,10 +148,13 @@ export class UIScene extends Phaser.Scene {
   }
 
   onDistanceChanged(data) {
-    this.distanceText.setText(`${Math.floor(data.distance)}m`);
+    if (this.distanceText) {
+      this.distanceText.setText(`${Math.floor(data.distance)}m`);
+    }
   }
 
   onComboChanged(data) {
+    if (!this.comboText) return;
     if (data.combo > 1) {
       this.comboText.setText(`${data.combo}x COMBO!`);
       this.comboText.setAlpha(1);
@@ -190,9 +202,11 @@ export class UIScene extends Phaser.Scene {
   }
 
   shutdown() {
-    eventBus.off(Events.SCORE_CHANGED, this.onScoreChanged, this);
-    eventBus.off(Events.DISTANCE_CHANGED, this.onDistanceChanged, this);
-    eventBus.off(Events.COMBO_CHANGED, this.onComboChanged, this);
-    eventBus.off(Events.ENEMY_KILLED, this.onEnemyKilled, this);
+    eventBus.off(Events.SCORE_CHANGED, this._onScoreChanged);
+    eventBus.off(Events.DISTANCE_CHANGED, this._onDistanceChanged);
+    eventBus.off(Events.COMBO_CHANGED, this._onComboChanged);
+    eventBus.off(Events.ENEMY_KILLED, this._onEnemyKilled);
+    eventBus.off(Events.POWERUP_COLLECTED, this._onPowerUp);
+    eventBus.off(Events.POWERUP_EXPIRED, this._onPowerUpExpired);
   }
 }

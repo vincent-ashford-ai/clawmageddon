@@ -113,6 +113,12 @@ export function getPatterns() {
 
 // Start playback of a pattern
 export async function startPlayback(trackName) {
+  // TODO: Strudel API changed - controls() no longer works
+  // Disabling music playback until we fix the integration
+  console.log(`[Music] Playback disabled (API update needed): ${trackName}`);
+  return;
+  
+  /*
   if (!strudelReady) {
     console.warn('[Music] Strudel not ready');
     return;
@@ -140,6 +146,7 @@ export async function startPlayback(trackName) {
   } catch (err) {
     console.error('[Music] Playback failed:', err);
   }
+  */
 }
 
 // Stop current playback

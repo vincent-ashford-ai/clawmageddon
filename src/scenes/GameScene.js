@@ -142,12 +142,13 @@ export class GameScene extends Phaser.Scene {
 
   fireWeapon(x, y) {
     if (this.activePowerUp === 'TRIPLE_SHOT') {
-      // Fire three bullets in spread pattern
-      this.bullets.fire(x, y);
-      this.bullets.fire(x, y - 30); // Up-diagonal
-      this.bullets.fire(x, y + 30); // Down-diagonal
+      // Fire three bullets in spread pattern (all go RIGHT with spread)
+      const spreadAngle = Math.PI / 12; // 15 degrees
+      this.bullets.fire(x, y, -spreadAngle); // Diagonal up-right
+      this.bullets.fire(x, y, 0);            // Straight right
+      this.bullets.fire(x, y, spreadAngle);  // Diagonal down-right
     } else {
-      this.bullets.fire(x, y);
+      this.bullets.fire(x, y, 0);
     }
   }
 
@@ -251,34 +252,36 @@ export class GameScene extends Phaser.Scene {
 
   spawnObstacles(time) {
     if (time < this.nextObstacleSpawn) return;
-    if (gameState.distance < 30) return; // Don't spawn too early
+    if (gameState.distance < 10) return; // Spawn earlier
     
     const types = Object.keys(OBSTACLE_TYPES);
     const type = Phaser.Utils.Array.GetRandom(types);
     const config = OBSTACLE_TYPES[type];
     
     const x = GAME.WIDTH + 50;
-    const y = PLAYER.GROUND_Y - config.height / 2;
+    // Place on ground - Y is center of sprite, ground is at PLAYER.GROUND_Y
+    const y = PLAYER.GROUND_Y - config.height / 2 + 10;
     
     this.obstacles.spawn(x, y, type, gameState.scrollSpeed);
     
     const difficultyFactor = Math.max(0.5, 1 - gameState.distance * 0.0005);
-    this.nextObstacleSpawn = time + Phaser.Math.Between(2500, 5000) * difficultyFactor;
+    this.nextObstacleSpawn = time + Phaser.Math.Between(1500, 3500) * difficultyFactor;
   }
 
   spawnPlatforms(time) {
     if (time < this.nextPlatformSpawn) return;
-    if (gameState.distance < 50) return;
+    if (gameState.distance < 20) return; // Spawn earlier
     
     const types = Object.keys(PLATFORM_TYPES);
     const type = Phaser.Utils.Array.GetRandom(types);
     
     const x = GAME.WIDTH + 100;
-    const y = Phaser.Math.Between(350, 500); // Mid-height platforms
+    // Mid-height platforms - player can jump on them
+    const y = Phaser.Math.Between(420, 520);
     
     this.platforms.spawn(x, y, type, gameState.scrollSpeed);
     
-    this.nextPlatformSpawn = time + Phaser.Math.Between(4000, 8000);
+    this.nextPlatformSpawn = time + Phaser.Math.Between(3000, 6000);
   }
 
   spawnPowerUps(time) {

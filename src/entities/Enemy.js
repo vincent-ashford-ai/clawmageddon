@@ -42,6 +42,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.body.allowGravity = !this.isFlying;
     this.setActive(false);
     this.setVisible(false);
+    this.body.enable = false; // Disable physics when pooled
     
     // Flying enemies bob up and down
     this.flyOffset = 0;
@@ -83,6 +84,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   spawn(x, y, scrollSpeed) {
+    this.body.enable = true; // Re-enable physics on spawn
     this.setPosition(x, y);
     this.setActive(true);
     this.setVisible(true);
@@ -113,6 +115,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.x < -50) {
       this.setActive(false);
       this.setVisible(false);
+      this.body.enable = false; // Disable physics when pooled
       this.anims.stop();
     }
   }
@@ -134,13 +137,17 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   die() {
+    // Capture position BEFORE deactivation
+    const deathX = this.x;
+    const deathY = this.y - (this.height * 0.3); // Center of visual sprite
+    
     const score = gameState.addScore(this.scoreValue);
     gameState.enemiesKilled++;
     gameState.incrementCombo();
     
     eventBus.emit(Events.ENEMY_KILLED, { 
-      x: this.x, 
-      y: this.y, 
+      x: deathX, 
+      y: deathY, 
       type: this.type,
       score: score,
     });
@@ -152,6 +159,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     
     this.setActive(false);
     this.setVisible(false);
+    this.body.enable = false; // Disable physics when pooled
     this.anims.stop();
   }
 }
