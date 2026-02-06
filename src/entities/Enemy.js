@@ -1,18 +1,23 @@
 // CLAWMAGEDDON - Enemies
 import Phaser from 'phaser';
-import { ENEMY, GAME } from '../core/Constants.js';
+import { ENEMY } from '../core/Constants.js';
 import { eventBus, Events } from '../core/EventBus.js';
 import { gameState } from '../core/GameState.js';
+import { renderSpriteSheet } from '../core/PixelRenderer.js';
+import { ENEMY_SPRITES, ENEMY_FRAME } from '../sprites/enemies.js';
 
 export class Enemy extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, type = 'GRUNT') {
     const typeConfig = ENEMY.TYPES[type] || ENEMY.TYPES.GRUNT;
     const textureKey = `enemy_${type.toLowerCase()}`;
     
-    // Create texture if needed
+    // Create pixel art texture if needed
     if (!scene.textures.exists(textureKey)) {
-      Enemy.createTexture(scene, textureKey, typeConfig);
+      Enemy.createTexture(scene, textureKey, type);
     }
+    
+    // Create animation if needed
+    Enemy.createAnimation(scene, type);
     
     super(scene, x, y, textureKey);
     
@@ -25,7 +30,15 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.scoreValue = typeConfig.score;
     this.isFlying = typeConfig.flying || false;
     
-    this.body.setSize(ENEMY.WIDTH * 0.8, ENEMY.HEIGHT * 0.9);
+    // Adjust physics body for pixel art dimensions (16x16 at 3x = 48x48)
+    const spriteSize = ENEMY_FRAME.width * ENEMY_FRAME.scale;
+    const bodyWidth = spriteSize * 0.6;
+    const bodyHeight = spriteSize * 0.8;
+    this.body.setSize(bodyWidth, bodyHeight);
+    this.body.setOffset(
+      (spriteSize - bodyWidth) / 2,
+      spriteSize - bodyHeight
+    );
     this.body.allowGravity = !this.isFlying;
     this.setActive(false);
     this.setVisible(false);
@@ -35,50 +48,38 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.flyBaseY = y;
   }
 
-  static createTexture(scene, key, config) {
-    const g = scene.add.graphics();
-    const w = ENEMY.WIDTH;
-    const h = ENEMY.HEIGHT;
+  static createTexture(scene, key, type) {
+    const spriteData = ENEMY_SPRITES[type];
+    if (!spriteData || !spriteData.frames) return;
     
-    // Evil alien soldier
-    g.fillStyle(config.color);
+    // Render sprite sheet with animation frames
+    renderSpriteSheet(scene, key, spriteData.frames, ENEMY_FRAME.scale);
+  }
+
+  static createAnimation(scene, type) {
+    const animKey = `enemy_${type.toLowerCase()}_walk`;
+    if (scene.anims.exists(animKey)) return;
     
-    // Body
-    g.fillRect(w * 0.2, h * 0.3, w * 0.6, h * 0.5);
+    const spriteData = ENEMY_SPRITES[type];
+    if (!spriteData || !spriteData.frames) return;
     
-    // Head
-    g.fillEllipse(w * 0.5, h * 0.2, w * 0.5, h * 0.35);
+    // Different frame rates for different enemy types
+    const frameRates = {
+      GRUNT: 4,
+      RUNNER: 10,
+      TANK: 3,
+      FLYER: 6,
+    };
     
-    // Evil eyes
-    g.fillStyle(0xff0000);
-    g.fillCircle(w * 0.35, h * 0.18, 4);
-    g.fillCircle(w * 0.65, h * 0.18, 4);
-    
-    // Legs
-    g.fillStyle(config.color);
-    g.fillRect(w * 0.25, h * 0.75, 8, 15);
-    g.fillRect(w * 0.55, h * 0.75, 8, 15);
-    
-    // Arms
-    g.fillRect(w * 0.05, h * 0.4, 10, 6);
-    g.fillRect(w * 0.75, h * 0.4, 10, 6);
-    
-    // Add spikes for TANK type
-    if (config.health > 1) {
-      g.fillStyle(0x555555);
-      g.fillTriangle(w * 0.3, h * 0.05, w * 0.35, h * 0.2, w * 0.4, h * 0.05);
-      g.fillTriangle(w * 0.6, h * 0.05, w * 0.65, h * 0.2, w * 0.7, h * 0.05);
-    }
-    
-    // Wings for FLYER type
-    if (config.flying) {
-      g.fillStyle(0x9932cc, 0.7);
-      g.fillEllipse(w * 0.1, h * 0.35, 15, 25);
-      g.fillEllipse(w * 0.9, h * 0.35, 15, 25);
-    }
-    
-    g.generateTexture(key, w, h);
-    g.destroy();
+    scene.anims.create({
+      key: animKey,
+      frames: scene.anims.generateFrameNumbers(`enemy_${type.toLowerCase()}`, {
+        start: 0,
+        end: spriteData.frames.length - 1
+      }),
+      frameRate: frameRates[type] || 6,
+      repeat: -1
+    });
   }
 
   spawn(x, y, scrollSpeed) {
@@ -91,6 +92,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     // Move left at scroll speed + own movement
     const moveSpeed = scrollSpeed + (this.typeConfig.speed || 0);
     this.body.setVelocityX(-moveSpeed);
+    
+    // Play walk animation
+    const animKey = `enemy_${this.type.toLowerCase()}_walk`;
+    if (this.scene.anims.exists(animKey)) {
+      this.play(animKey);
+    }
     
     eventBus.emit(Events.ENEMY_SPAWNED, { type: this.type });
   }
@@ -106,6 +113,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.x < -50) {
       this.setActive(false);
       this.setVisible(false);
+      this.anims.stop();
     }
   }
 
@@ -144,6 +152,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     
     this.setActive(false);
     this.setVisible(false);
+    this.anims.stop();
   }
 }
 

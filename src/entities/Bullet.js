@@ -1,10 +1,12 @@
-// CLAWMAGEDDON - Bullet (Claw-shaped projectile!)
+// CLAWMAGEDDON - Bullet (Plasma claw projectile!)
 import Phaser from 'phaser';
 import { BULLET } from '../core/Constants.js';
+import { renderPixelArt } from '../core/PixelRenderer.js';
+import { BULLET_SPRITE, BULLET_FRAME } from '../sprites/projectiles.js';
 
 export class Bullet extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y) {
-    // Create texture if it doesn't exist
+    // Create pixel art texture if it doesn't exist
     if (!scene.textures.exists('bullet')) {
       Bullet.createTexture(scene);
     }
@@ -14,38 +16,17 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     
-    this.body.setSize(BULLET.WIDTH, BULLET.HEIGHT);
+    // Set physics body to match pixel art dimensions (8x4 at 3x = 24x12)
+    const bodyWidth = BULLET_FRAME.width * BULLET_FRAME.scale;
+    const bodyHeight = BULLET_FRAME.height * BULLET_FRAME.scale;
+    this.body.setSize(bodyWidth, bodyHeight);
     this.body.allowGravity = false;
     this.setActive(false);
     this.setVisible(false);
   }
 
   static createTexture(scene) {
-    const g = scene.add.graphics();
-    const w = BULLET.WIDTH;
-    const h = BULLET.HEIGHT;
-    
-    // Glowing plasma claw shot
-    g.fillStyle(BULLET.GLOW_COLOR, 0.3);
-    g.fillEllipse(w/2, h/2, w + 4, h + 4);
-    
-    g.fillStyle(BULLET.COLOR, 0.7);
-    g.fillEllipse(w/2, h/2, w, h);
-    
-    g.fillStyle(0xffffff, 1);
-    g.fillEllipse(w/2, h/2, w * 0.5, h * 0.5);
-    
-    // Claw shape trail
-    g.fillStyle(BULLET.GLOW_COLOR, 0.5);
-    g.beginPath();
-    g.moveTo(0, h * 0.3);
-    g.lineTo(w * 0.3, h * 0.5);
-    g.lineTo(0, h * 0.7);
-    g.closePath();
-    g.fill();
-    
-    g.generateTexture('bullet', w + 4, h + 4);
-    g.destroy();
+    renderPixelArt(scene, 'bullet', BULLET_SPRITE, BULLET_FRAME.scale);
   }
 
   fire(x, y) {

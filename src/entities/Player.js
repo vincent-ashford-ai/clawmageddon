@@ -1,8 +1,11 @@
 // CLAWMAGEDDON - The Lobster Hero
 import Phaser from 'phaser';
-import { PLAYER, LOBSTER, BULLET } from '../core/Constants.js';
+import { PLAYER, BULLET } from '../core/Constants.js';
 import { eventBus, Events } from '../core/EventBus.js';
 import { gameState } from '../core/GameState.js';
+import { renderSpriteSheet, renderPixelArt } from '../core/PixelRenderer.js';
+import { PLAYER_RUN, PLAYER_JUMP, PLAYER_IDLE, PLAYER_FRAME } from '../sprites/player.js';
+import { MUZZLE_FLASH, MUZZLE_FRAME } from '../sprites/projectiles.js';
 
 export class Player {
   constructor(scene) {
@@ -11,126 +14,63 @@ export class Player {
     this.lastFireTime = 0;
     this.isOnGround = true;
     
-    // Create the lobster sprite using graphics
-    this.createLobsterTexture();
+    // Create pixel art textures
+    this.createTextures();
+    
+    // Create animations
+    this.createAnimations();
     
     // Create sprite with physics
-    this.sprite = scene.physics.add.sprite(PLAYER.X, PLAYER.GROUND_Y, 'lobster');
+    this.sprite = scene.physics.add.sprite(PLAYER.X, PLAYER.GROUND_Y, 'lobster_run');
     this.sprite.setOrigin(0.5, 1);
-    this.sprite.body.setSize(PLAYER.WIDTH * 0.7, PLAYER.HEIGHT * 0.9);
-    this.sprite.body.setOffset(PLAYER.WIDTH * 0.15, PLAYER.HEIGHT * 0.1);
+    
+    // Adjust physics body for pixel art dimensions (16x16 at 3x = 48x48)
+    const spriteSize = PLAYER_FRAME.width * PLAYER_FRAME.scale;
+    const bodyWidth = spriteSize * 0.5;
+    const bodyHeight = spriteSize * 0.85;
+    this.sprite.body.setSize(bodyWidth, bodyHeight);
+    this.sprite.body.setOffset(
+      (spriteSize - bodyWidth) / 2,
+      spriteSize - bodyHeight
+    );
     this.sprite.body.setCollideWorldBounds(true);
     
-    // Muzzle flash graphics (hidden by default)
-    this.muzzleFlash = scene.add.graphics();
-    this.muzzleFlash.setVisible(false);
+    // Start run animation
+    this.sprite.play('lobster_run');
     
-    // Running animation bob
-    this.bobOffset = 0;
+    // Create pixel art muzzle flash sprite (hidden by default)
+    this.muzzleFlash = scene.add.sprite(0, 0, 'muzzle_flash');
+    this.muzzleFlash.setOrigin(0.5, 0.5);
+    this.muzzleFlash.setVisible(false);
   }
 
-  createLobsterTexture() {
-    const g = this.scene.add.graphics();
-    const w = PLAYER.WIDTH;
-    const h = PLAYER.HEIGHT;
+  createTextures() {
+    // Render run cycle spritesheet
+    renderSpriteSheet(this.scene, 'lobster_run', PLAYER_RUN, PLAYER_FRAME.scale);
     
-    // === LEGS (back, running pose) ===
-    g.fillStyle(LOBSTER.LEGS);
-    // Back legs
-    g.fillRect(w * 0.2, h * 0.75, 6, 18);
-    g.fillRect(w * 0.35, h * 0.78, 6, 15);
-    // Front legs
-    g.fillRect(w * 0.55, h * 0.78, 6, 15);
-    g.fillRect(w * 0.7, h * 0.75, 6, 18);
+    // Render jump pose
+    renderPixelArt(this.scene, 'lobster_jump', PLAYER_JUMP, PLAYER_FRAME.scale);
     
-    // === BODY/TAIL ===
-    g.fillStyle(LOBSTER.SHELL);
-    // Tail segments
-    g.fillEllipse(w * 0.15, h * 0.5, 14, 20);
-    g.fillEllipse(w * 0.25, h * 0.48, 16, 22);
-    // Main body
-    g.fillEllipse(w * 0.45, h * 0.42, 28, 32);
+    // Render idle pose
+    renderPixelArt(this.scene, 'lobster_idle', PLAYER_IDLE, PLAYER_FRAME.scale);
     
-    // Body shading
-    g.fillStyle(LOBSTER.SHELL_DARK);
-    g.fillEllipse(w * 0.15, h * 0.55, 10, 12);
-    g.fillEllipse(w * 0.45, h * 0.5, 20, 18);
-    
-    // === HEAD ===
-    g.fillStyle(LOBSTER.SHELL);
-    g.fillEllipse(w * 0.7, h * 0.35, 22, 26);
-    
-    // Antennae
-    g.lineStyle(2, LOBSTER.CLAW);
-    g.beginPath();
-    g.moveTo(w * 0.75, h * 0.2);
-    g.lineTo(w * 0.85, h * 0.05);
-    g.lineTo(w * 0.95, h * 0.02);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(w * 0.72, h * 0.22);
-    g.lineTo(w * 0.78, h * 0.08);
-    g.lineTo(w * 0.88, h * 0.06);
-    g.stroke();
-    
-    // Eyes (on stalks!)
-    g.fillStyle(LOBSTER.SHELL);
-    g.fillRect(w * 0.65, h * 0.18, 4, 10);
-    g.fillRect(w * 0.75, h * 0.16, 4, 12);
-    g.fillStyle(LOBSTER.EYES);
-    g.fillCircle(w * 0.67, h * 0.15, 5);
-    g.fillCircle(w * 0.77, h * 0.12, 5);
-    // Pupils
-    g.fillStyle(0x000000);
-    g.fillCircle(w * 0.69, h * 0.14, 2);
-    g.fillCircle(w * 0.79, h * 0.11, 2);
-    
-    // === BANDANA (Rambo style!) ===
-    g.fillStyle(LOBSTER.BANDANA);
-    g.fillRect(w * 0.58, h * 0.28, 26, 8);
-    // Bandana tail flowing behind
-    g.beginPath();
-    g.moveTo(w * 0.58, h * 0.28);
-    g.lineTo(w * 0.4, h * 0.22);
-    g.lineTo(w * 0.38, h * 0.32);
-    g.lineTo(w * 0.58, h * 0.36);
-    g.closePath();
-    g.fill();
-    
-    // === CLAWS (the money shot!) ===
-    g.fillStyle(LOBSTER.CLAW);
-    
-    // Back claw (smaller, behind body)
-    g.fillEllipse(w * 0.35, h * 0.55, 12, 8);
-    
-    // Front claw (BIG, holding position) - this is the shooting claw!
-    // Upper pincer
-    g.fillEllipse(w * 0.9, h * 0.45, 18, 10);
-    g.beginPath();
-    g.moveTo(w * 0.92, h * 0.4);
-    g.lineTo(w * 1.05, h * 0.35);
-    g.lineTo(w * 1.02, h * 0.42);
-    g.lineTo(w * 0.92, h * 0.45);
-    g.closePath();
-    g.fill();
-    
-    // Lower pincer
-    g.fillEllipse(w * 0.88, h * 0.52, 16, 8);
-    g.beginPath();
-    g.moveTo(w * 0.9, h * 0.52);
-    g.lineTo(w * 1.0, h * 0.55);
-    g.lineTo(w * 0.98, h * 0.6);
-    g.lineTo(w * 0.88, h * 0.56);
-    g.closePath();
-    g.fill();
-    
-    // Arm connecting claw to body
-    g.fillStyle(LOBSTER.SHELL);
-    g.fillRect(w * 0.7, h * 0.42, 18, 10);
-    
-    // Generate texture
-    g.generateTexture('lobster', w, h);
-    g.destroy();
+    // Render muzzle flash
+    renderPixelArt(this.scene, 'muzzle_flash', MUZZLE_FLASH, MUZZLE_FRAME.scale);
+  }
+
+  createAnimations() {
+    // Run animation
+    if (!this.scene.anims.exists('lobster_run')) {
+      this.scene.anims.create({
+        key: 'lobster_run',
+        frames: this.scene.anims.generateFrameNumbers('lobster_run', { 
+          start: 0, 
+          end: PLAYER_RUN.length - 1 
+        }),
+        frameRate: 10,
+        repeat: -1,
+      });
+    }
   }
 
   update(inputAction, time) {
@@ -143,6 +83,7 @@ export class Player {
     // Reset jumps when landing
     if (!wasOnGround && this.isOnGround) {
       this.jumpsRemaining = PLAYER.MAX_JUMPS;
+      this.sprite.play('lobster_run');
       eventBus.emit(Events.PLAYER_LAND);
     }
     
@@ -163,17 +104,15 @@ export class Player {
       }
     }
     
-    // Running bob animation - only scale, don't touch position (physics controls it)
-    if (this.isOnGround) {
-      this.bobOffset = Math.sin(time * 0.015) * 0.03;
-      this.sprite.setScale(1, 1 + this.bobOffset);
-    } else {
-      this.sprite.setScale(1, 1);
+    // Update sprite animation based on state
+    if (!this.isOnGround) {
+      this.sprite.setTexture('lobster_jump');
     }
     
-    // Update muzzle flash position
-    this.muzzleFlash.x = this.sprite.x + PLAYER.WIDTH * 0.5;
-    this.muzzleFlash.y = this.sprite.y - PLAYER.HEIGHT * 0.5;
+    // Update muzzle flash position (at the claw)
+    const spriteSize = PLAYER_FRAME.width * PLAYER_FRAME.scale;
+    this.muzzleFlash.x = this.sprite.x + spriteSize * 0.4;
+    this.muzzleFlash.y = this.sprite.y - spriteSize * 0.55;
   }
 
   jump() {
@@ -181,6 +120,7 @@ export class Player {
       this.sprite.body.setVelocityY(PLAYER.JUMP_VELOCITY);
       this.jumpsRemaining--;
       gameState.jumpsUsed++;
+      this.sprite.setTexture('lobster_jump');
       eventBus.emit(Events.PLAYER_JUMP, { 
         doubleJump: this.jumpsRemaining < PLAYER.MAX_JUMPS - 1 
       });
@@ -194,9 +134,10 @@ export class Player {
     gameState.shotsFired++;
     
     // Emit bullet event - GameScene will spawn the bullet
+    const spriteSize = PLAYER_FRAME.width * PLAYER_FRAME.scale;
     eventBus.emit(Events.PLAYER_SHOOT, {
-      x: this.sprite.x + PLAYER.WIDTH * 0.6,
-      y: this.sprite.y - PLAYER.HEIGHT * 0.5,
+      x: this.sprite.x + spriteSize * 0.45,
+      y: this.sprite.y - spriteSize * 0.55,
     });
     
     // Show muzzle flash
@@ -207,18 +148,12 @@ export class Player {
   }
 
   showMuzzleFlash() {
-    const flash = this.muzzleFlash;
-    flash.clear();
-    flash.fillStyle(0xffffff, 1);
-    flash.fillCircle(0, 0, 8);
-    flash.fillStyle(0xffff00, 0.8);
-    flash.fillCircle(0, 0, 12);
-    flash.fillStyle(0xff6600, 0.5);
-    flash.fillCircle(0, 0, 16);
-    flash.setVisible(true);
+    this.muzzleFlash.setVisible(true);
+    this.muzzleFlash.setScale(0.8 + Math.random() * 0.4);
+    this.muzzleFlash.setAngle(Math.random() * 30 - 15);
     
     this.scene.time.delayedCall(50, () => {
-      flash.setVisible(false);
+      this.muzzleFlash.setVisible(false);
     });
   }
 
@@ -236,6 +171,9 @@ export class Player {
   die() {
     eventBus.emit(Events.PLAYER_DIED);
     
+    // Stop animation
+    this.sprite.anims.stop();
+    
     // Dramatic death - fly off screen
     this.sprite.body.setVelocity(-100, -400);
     this.sprite.body.setAngularVelocity(360);
@@ -249,6 +187,7 @@ export class Player {
     this.jumpsRemaining = PLAYER.MAX_JUMPS;
     this.lastFireTime = 0;
     this.isOnGround = true;
+    this.sprite.play('lobster_run');
   }
 
   destroy() {
