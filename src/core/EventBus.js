@@ -23,6 +23,14 @@ export const Events = {
   ENEMY_REACHED_PLAYER: 'enemy:reached',
   EXPLOSION: 'explosion',
 
+  // Power-ups
+  POWERUP_SPAWNED: 'powerup:spawned',
+  POWERUP_COLLECTED: 'powerup:collected',
+  POWERUP_EXPIRED: 'powerup:expired',
+
+  // Obstacles
+  OBSTACLE_HIT: 'obstacle:hit',
+
   // Score & Progress
   SCORE_CHANGED: 'score:changed',
   DISTANCE_CHANGED: 'distance:changed',

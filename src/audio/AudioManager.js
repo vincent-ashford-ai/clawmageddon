@@ -127,6 +127,10 @@ class AudioManager {
     return this.muted;
   }
 
+  isMuted() {
+    return this.muted;
+  }
+
   // Volume controls (0-1)
   setMasterVolume(vol) {
     if (this.masterGain) {

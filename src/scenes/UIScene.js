@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { GAME, COLORS, UI, TRANSITION } from '../core/Constants.js';
 import { eventBus, Events } from '../core/EventBus.js';
 import { gameState } from '../core/GameState.js';
+import { audioManager } from '../audio/AudioManager.js';
 
 export class UIScene extends Phaser.Scene {
   constructor() {
@@ -61,6 +62,67 @@ export class UIScene extends Phaser.Scene {
     eventBus.on(Events.DISTANCE_CHANGED, this.onDistanceChanged, this);
     eventBus.on(Events.COMBO_CHANGED, this.onComboChanged, this);
     eventBus.on(Events.ENEMY_KILLED, this.onEnemyKilled, this);
+    
+    // Power-up indicator
+    this.powerUpText = this.add.text(GAME.WIDTH / 2, 60, '', {
+      fontFamily: UI.FONT_FAMILY,
+      fontSize: '16px',
+      color: '#00ffff',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(1000).setAlpha(0);
+    
+    eventBus.on(Events.POWERUP_COLLECTED, this.onPowerUp, this);
+    eventBus.on(Events.POWERUP_EXPIRED, this.onPowerUpExpired, this);
+    
+    // Mute button (top center-right, avoiding score)
+    this.createMuteButton();
+  }
+
+  createMuteButton() {
+    const x = GAME.WIDTH - 35;
+    const y = 60;
+    
+    this.muteBtn = this.add.circle(x, y, 20, 0x333333, 0.6)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(1001)
+      .on('pointerdown', () => this.toggleMute());
+    
+    this.muteIcon = this.add.text(x, y, '🔊', {
+      fontSize: '16px',
+    }).setOrigin(0.5).setDepth(1001);
+    
+    this.updateMuteIcon();
+  }
+
+  toggleMute() {
+    audioManager.toggleMute();
+    this.updateMuteIcon();
+  }
+
+  updateMuteIcon() {
+    const isMuted = audioManager.isMuted?.() ?? false;
+    this.muteIcon.setText(isMuted ? '🔇' : '🔊');
+  }
+
+  onPowerUp(data) {
+    this.powerUpText.setText(`⚡ ${data.type.toUpperCase()} ⚡`);
+    this.powerUpText.setAlpha(1);
+    
+    this.tweens.add({
+      targets: this.powerUpText,
+      scale: 1.2,
+      duration: 200,
+      yoyo: true,
+    });
+  }
+
+  onPowerUpExpired() {
+    this.tweens.add({
+      targets: this.powerUpText,
+      alpha: 0,
+      duration: 300,
+    });
   }
 
   onScoreChanged(data) {

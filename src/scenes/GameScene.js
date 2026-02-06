@@ -6,6 +6,9 @@ import { gameState } from '../core/GameState.js';
 import { Player } from '../entities/Player.js';
 import { BulletPool } from '../entities/Bullet.js';
 import { EnemyPool } from '../entities/Enemy.js';
+import { ObstaclePool, OBSTACLE_TYPES } from '../entities/Obstacle.js';
+import { PlatformPool, PLATFORM_TYPES } from '../entities/Platform.js';
+import { PowerUpPool, POWERUP_TYPES } from '../entities/PowerUp.js';
 import { Background } from '../systems/Background.js';
 import { ParticleSystem } from '../systems/ParticleSystem.js';
 
@@ -17,6 +20,10 @@ export class GameScene extends Phaser.Scene {
   create() {
     gameState.reset();
     gameState.scrollSpeed = GAME.SCROLL_SPEED;
+    
+    // Power-up state
+    this.activePowerUp = null;
+    this.powerUpTimer = null;
     
     // Mobile detection
     this.isMobile = this.sys.game.device.os.android ||
@@ -30,9 +37,33 @@ export class GameScene extends Phaser.Scene {
     this.player = new Player(this);
     this.bullets = new BulletPool(this);
     this.enemies = new EnemyPool(this);
+    this.obstacles = new ObstaclePool(this);
+    this.platforms = new PlatformPool(this);
+    this.powerUps = new PowerUpPool(this);
     
     // Collision: player with ground
     this.physics.add.collider(this.player.sprite, this.background.getGroundCollider());
+    
+    // Collision: player with platforms (land on top)
+    this.platforms.getAllGroups().forEach(group => {
+      this.physics.add.collider(this.player.sprite, group);
+    });
+    
+    // Collision: player with landable obstacles (crates)
+    this.obstacles.getLandableGroups().forEach(group => {
+      this.physics.add.collider(this.player.sprite, group);
+    });
+    
+    // Collision: player with deadly obstacles
+    this.obstacles.getDeadlyGroups().forEach(group => {
+      this.physics.add.overlap(
+        this.player.sprite,
+        group,
+        this.onObstacleHitPlayer,
+        null,
+        this
+      );
+    });
     
     // Collision: bullets with enemies
     this.enemies.getAllGroups().forEach(group => {
@@ -54,14 +85,28 @@ export class GameScene extends Phaser.Scene {
       );
     });
     
+    // Collision: player with power-ups
+    this.powerUps.getAllGroups().forEach(group => {
+      this.physics.add.overlap(
+        this.player.sprite,
+        group,
+        this.onPowerUpCollected,
+        null,
+        this
+      );
+    });
+    
     // Input
     this.setupInput();
     
     // Event listeners
     this.setupEvents();
     
-    // Spawn timer
+    // Spawn timers
     this.nextEnemySpawn = 0;
+    this.nextObstacleSpawn = 2000;
+    this.nextPlatformSpawn = 3000;
+    this.nextPowerUpSpawn = 10000;
     
     // Start UI scene
     this.scene.launch('UIScene');
@@ -76,25 +121,34 @@ export class GameScene extends Phaser.Scene {
     this.upKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
     this.wKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
     
-    // Track if action was just pressed this frame
     this.actionPressed = false;
     
-    // Touch/click - anywhere on screen
-    this.input.on('pointerdown', () => {
+    this.input.on('pointerdown', (pointer) => {
+      // Ignore mute button area
+      if (pointer.x > GAME.WIDTH - 60 && pointer.y < 80) return;
       this.actionPressed = true;
     });
   }
 
   setupEvents() {
-    // Player shoots - spawn bullet
     eventBus.on(Events.PLAYER_SHOOT, (data) => {
-      this.bullets.fire(data.x, data.y);
+      this.fireWeapon(data.x, data.y);
     });
     
-    // Screen shake
     eventBus.on(Events.SCREEN_SHAKE, (data) => {
       this.cameras.main.shake(data.duration, data.intensity * 0.001);
     });
+  }
+
+  fireWeapon(x, y) {
+    if (this.activePowerUp === 'TRIPLE_SHOT') {
+      // Fire three bullets in spread pattern
+      this.bullets.fire(x, y);
+      this.bullets.fire(x, y - 30); // Up-diagonal
+      this.bullets.fire(x, y + 30); // Down-diagonal
+    } else {
+      this.bullets.fire(x, y);
+    }
   }
 
   update(time, delta) {
@@ -106,7 +160,7 @@ export class GameScene extends Phaser.Scene {
                        Phaser.Input.Keyboard.JustDown(this.wKey);
     
     const action = keyPressed || this.actionPressed;
-    this.actionPressed = false; // Reset for next frame
+    this.actionPressed = false;
     
     // Update player
     this.player.update(action, time);
@@ -127,6 +181,15 @@ export class GameScene extends Phaser.Scene {
     // Spawn enemies
     this.spawnEnemies(time);
     
+    // Spawn obstacles
+    this.spawnObstacles(time);
+    
+    // Spawn platforms
+    this.spawnPlatforms(time);
+    
+    // Spawn power-ups
+    this.spawnPowerUps(time);
+    
     // Update enemy velocities to match scroll speed
     this.enemies.getAllGroups().forEach(group => {
       group.getChildren().forEach(enemy => {
@@ -137,7 +200,25 @@ export class GameScene extends Phaser.Scene {
       });
     });
     
-    // Combo decay - reset if no kills for 2 seconds
+    // Update obstacle/platform velocities
+    [...this.obstacles.getAllGroups(), ...this.platforms.getAllGroups()].forEach(group => {
+      group.getChildren().forEach(obj => {
+        if (obj.active) {
+          obj.body.setVelocityX(-gameState.scrollSpeed);
+        }
+      });
+    });
+    
+    // Update power-up velocities
+    this.powerUps.getAllGroups().forEach(group => {
+      group.getChildren().forEach(pu => {
+        if (pu.active) {
+          pu.body.setVelocityX(-gameState.scrollSpeed * 0.8);
+        }
+      });
+    });
+    
+    // Combo decay
     if (!this.lastKillTime) this.lastKillTime = time;
     if (time - this.lastKillTime > 2000 && gameState.combo > 0) {
       gameState.resetCombo();
@@ -148,21 +229,18 @@ export class GameScene extends Phaser.Scene {
   spawnEnemies(time) {
     if (time < this.nextEnemySpawn) return;
     
-    // Pick random enemy type weighted by difficulty
     const types = Object.keys(ENEMY.TYPES);
     const weights = this.getEnemyWeights();
     const type = this.weightedRandom(types, weights);
     
-    // Spawn position
     const x = GAME.WIDTH + 50;
     const typeConfig = ENEMY.TYPES[type];
     const y = typeConfig.flying 
-      ? Phaser.Math.Between(200, 400)  // Flyers in upper area
-      : PLAYER.GROUND_Y - ENEMY.HEIGHT / 2;  // Ground enemies
+      ? Phaser.Math.Between(200, 400)
+      : PLAYER.GROUND_Y - ENEMY.HEIGHT / 2;
     
     this.enemies.spawn(x, y, type, gameState.scrollSpeed);
     
-    // Next spawn time - gets faster as game progresses
     const spawnRange = ENEMY.SPAWN_INTERVAL;
     const difficultyFactor = Math.max(0.3, 1 - gameState.distance * 0.001);
     this.nextEnemySpawn = time + Phaser.Math.Between(
@@ -171,18 +249,64 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  spawnObstacles(time) {
+    if (time < this.nextObstacleSpawn) return;
+    if (gameState.distance < 30) return; // Don't spawn too early
+    
+    const types = Object.keys(OBSTACLE_TYPES);
+    const type = Phaser.Utils.Array.GetRandom(types);
+    const config = OBSTACLE_TYPES[type];
+    
+    const x = GAME.WIDTH + 50;
+    const y = PLAYER.GROUND_Y - config.height / 2;
+    
+    this.obstacles.spawn(x, y, type, gameState.scrollSpeed);
+    
+    const difficultyFactor = Math.max(0.5, 1 - gameState.distance * 0.0005);
+    this.nextObstacleSpawn = time + Phaser.Math.Between(2500, 5000) * difficultyFactor;
+  }
+
+  spawnPlatforms(time) {
+    if (time < this.nextPlatformSpawn) return;
+    if (gameState.distance < 50) return;
+    
+    const types = Object.keys(PLATFORM_TYPES);
+    const type = Phaser.Utils.Array.GetRandom(types);
+    
+    const x = GAME.WIDTH + 100;
+    const y = Phaser.Math.Between(350, 500); // Mid-height platforms
+    
+    this.platforms.spawn(x, y, type, gameState.scrollSpeed);
+    
+    this.nextPlatformSpawn = time + Phaser.Math.Between(4000, 8000);
+  }
+
+  spawnPowerUps(time) {
+    if (time < this.nextPowerUpSpawn) return;
+    if (gameState.distance < 80) return;
+    
+    // Only spawn TRIPLE_SHOT for now
+    const type = 'TRIPLE_SHOT';
+    
+    const x = GAME.WIDTH + 50;
+    const y = Phaser.Math.Between(400, 550);
+    
+    this.powerUps.spawn(x, y, type, gameState.scrollSpeed);
+    
+    this.nextPowerUpSpawn = time + Phaser.Math.Between(15000, 25000);
+  }
+
   getEnemyWeights() {
-    // Weights change based on distance/difficulty
     const distance = gameState.distance;
     
     if (distance < 50) {
-      return [1, 0, 0, 0]; // Only grunts at start
+      return [1, 0, 0, 0];
     } else if (distance < 150) {
-      return [0.6, 0.3, 0.05, 0.05]; // Mostly grunts, some runners
+      return [0.6, 0.3, 0.05, 0.05];
     } else if (distance < 300) {
-      return [0.4, 0.3, 0.15, 0.15]; // Mix
+      return [0.4, 0.3, 0.15, 0.15];
     } else {
-      return [0.25, 0.25, 0.25, 0.25]; // Equal mix
+      return [0.25, 0.25, 0.25, 0.25];
     }
   }
 
@@ -200,11 +324,9 @@ export class GameScene extends Phaser.Scene {
   onBulletHitEnemy(bullet, enemy) {
     if (!bullet.active || !enemy.active) return;
     
-    // Deactivate bullet
     bullet.setActive(false);
     bullet.setVisible(false);
     
-    // Hit enemy
     const killed = enemy.hit();
     
     if (killed) {
@@ -216,9 +338,40 @@ export class GameScene extends Phaser.Scene {
 
   onEnemyHitPlayer(player, enemy) {
     if (!enemy.active || gameState.gameOver) return;
-    
-    // Game over!
+    if (this.activePowerUp === 'SHIELD') {
+      enemy.die();
+      return;
+    }
     this.triggerGameOver();
+  }
+
+  onObstacleHitPlayer(player, obstacle) {
+    if (!obstacle.active || gameState.gameOver) return;
+    if (!obstacle.isDeadly) return;
+    if (this.activePowerUp === 'SHIELD') return;
+    this.triggerGameOver();
+  }
+
+  onPowerUpCollected(player, powerUp) {
+    if (!powerUp.active) return;
+    
+    const data = powerUp.collect();
+    this.activatePowerUp(data.type, data.duration);
+  }
+
+  activatePowerUp(type, duration) {
+    // Clear existing power-up timer
+    if (this.powerUpTimer) {
+      this.powerUpTimer.remove();
+    }
+    
+    this.activePowerUp = type;
+    
+    // Set expiration timer
+    this.powerUpTimer = this.time.delayedCall(duration, () => {
+      this.activePowerUp = null;
+      eventBus.emit(Events.POWERUP_EXPIRED);
+    });
   }
 
   triggerGameOver() {
@@ -227,7 +380,6 @@ export class GameScene extends Phaser.Scene {
     gameState.gameOver = true;
     this.player.die();
     
-    // Dramatic pause
     this.time.delayedCall(500, () => {
       eventBus.emit(Events.GAME_OVER, { 
         score: gameState.score,
@@ -242,5 +394,8 @@ export class GameScene extends Phaser.Scene {
     eventBus.off(Events.PLAYER_SHOOT);
     eventBus.off(Events.SCREEN_SHAKE);
     this.particleSystem.destroy();
+    if (this.powerUpTimer) {
+      this.powerUpTimer.remove();
+    }
   }
 }

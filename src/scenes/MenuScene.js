@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { GAME, COLORS, LOBSTER, UI, TRANSITION } from '../core/Constants.js';
 import { eventBus, Events } from '../core/EventBus.js';
 import { gameState } from '../core/GameState.js';
+import { audioManager } from '../audio/AudioManager.js';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -38,9 +39,48 @@ export class MenuScene extends Phaser.Scene {
       color: '#666666',
     }).setOrigin(0.5);
     
+    // Mute button (top right)
+    this.createMuteButton();
+    
+    // Start menu music
+    eventBus.emit(Events.MUSIC_MENU);
+    
     // Input
-    this.input.once('pointerdown', () => this.startGame());
+    this.input.once('pointerdown', (pointer) => {
+      // Don't start if clicking mute button area
+      if (pointer.x > GAME.WIDTH - 60 && pointer.y < 60) return;
+      this.startGame();
+    });
     this.input.keyboard.once('keydown-SPACE', () => this.startGame());
+  }
+
+  createMuteButton() {
+    const x = GAME.WIDTH - 35;
+    const y = 35;
+    
+    // Button background
+    this.muteBtn = this.add.circle(x, y, 25, 0x333333, 0.8)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => this.muteBtn.setFillStyle(0x555555, 0.9))
+      .on('pointerout', () => this.muteBtn.setFillStyle(0x333333, 0.8))
+      .on('pointerdown', () => this.toggleMute());
+    
+    // Speaker icon
+    this.muteIcon = this.add.text(x, y, '🔊', {
+      fontSize: '20px',
+    }).setOrigin(0.5);
+    
+    this.updateMuteIcon();
+  }
+
+  toggleMute() {
+    audioManager.toggleMute();
+    this.updateMuteIcon();
+  }
+
+  updateMuteIcon() {
+    const isMuted = audioManager.isMuted?.() ?? false;
+    this.muteIcon.setText(isMuted ? '🔇' : '🔊');
   }
 
   createBackground() {
